@@ -6,7 +6,9 @@ import crux.pt.CruxBaseVisitor;
 import crux.pt.CruxParser;
 import crux.ast.types.*;
 import crux.ast.SymbolTable.Symbol;
+import javafx.geometry.Pos;
 import org.antlr.v4.runtime.ParserRuleContext;
+import org.antlr.v4.runtime.tree.ParseTreeVisitor;
 
 import java.io.PrintStream;
 import java.util.ArrayList;
@@ -51,8 +53,19 @@ public final class ParseTreeLower {
    */
 
   public DeclarationList lower(CruxParser.ProgramContext program) {
-    return null;
+
+    List<Declaration> declarations = new ArrayList<>();
+
+    CruxParser.DeclListContext declListContext =  program.declList();
+    for(CruxParser.DeclContext declContext : declListContext.decl()){
+      Declaration declaration = declContext.accept(declVisitor) ;
+      declarations.add(declaration);
+    }
+
+    return new DeclarationList(makePosition(program), declarations);
   }
+
+
 
   /**
    * Lower stmt list by lower individual stmt into AST.
@@ -84,30 +97,80 @@ public final class ParseTreeLower {
      * @return an AST {@link VariableDeclaration}
      */
 
-    /*
-     * @Override
-     * public VariableDeclaration visitVarDecl(CruxParser.VarDeclContext ctx) { }
-     */
+    public VariableDeclaration visitVarDecl(CruxParser.VarDeclContext ctx) {
+      CruxParser.TypeContext t = ctx.type();
+      Type type;
+      if(t.getText() == "bool"){
+        type = new BoolType();
+      }else{
+        type = new IntType();
+      }
+      Position position = makePosition(ctx);
+      Symbol symbol = symTab.add(position, ctx.Identifier().getText(), type);
+      return new VariableDeclaration(position, symbol);
+    }
 
-    /**
-     * Visit a parse tree array decl and creates an AST {@link ArrayDeclaration}
-     *
-     * @return an AST {@link ArrayDeclaration}
-     */
-    /*
-     *    @Override
-     * public Declaration visitArrayDecl(CruxParser.ArrayDeclContext ctx) { }
-     */
+    public Declaration visitArrayDecl(CruxParser.ArrayDeclContext ctx) {
+      CruxParser.TypeContext t = ctx.type();
+      Type type;
+      int size = Integer.parseInt(ctx.Integer().getText());
+      if(t.getText() == "bool"){
+        type = new ArrayType(size, new BoolType());
+      }else{
+        type = new ArrayType(size, new IntType());
+      }
+      Position position = makePosition(ctx);
+      Symbol symbol = symTab.add(position, ctx.Identifier().getText(), type);
+      return new ArrayDeclaration(position, symbol);
+    }
+    public Declaration visitFunctionDefn(CruxParser.FunctionDefnContext ctx) {
+      CruxParser.TypeContext t = ctx.type();
+      CruxParser.ParamListContext paramListContext = ctx.paramList();
+      CruxParser.StmtBlockContext stmtBlockContext = ctx.stmtBlock();
+      Type ret;
+      if(t.getText() == "bool"){
+        ret = new BoolType();
+      }else if(t.getText() == "void"){
+        ret = new VoidType();
+      }else{
+        ret = new IntType();
+      }
+      List<Type> list = new ArrayList<>();
+      for(CruxParser.ParamContext paramContext: paramListContext.param()){
+        if(paramContext.type().getText() == "bool"){
+          list.add(new BoolType());
+        }else{
+          list.add(new IntType());
+        }
+      }
+      TypeList args = new TypeList(list);
+      Type type = new FuncType(args, ret);
 
-    /**
-     * Visit a parse tree function definition and create an AST {@link FunctionDefinition}
-     *
-     * @return an AST {@link FunctionDefinition}
-     */
+      Position position = makePosition(ctx);
+      Symbol symbol = symTab.add(position, ctx.Identifier().getText(), type);
+      List<Symbol> parameters = new ArrayList<>();
 
-    /* @Override
-     * public Declaration visitFunctionDefn(CruxParser.FunctionDefnContext ctx) { }
-     */
+      //enter a new scope before adding the param symbols
+      symTab.enter();
+      for(CruxParser.ParamContext paramContext: paramListContext.param()){
+        if(paramContext.type().getText() == "bool"){
+          parameters.add(symTab.add(position, paramContext.Identifier().getText(), new BoolType()));
+        }else{
+          parameters.add(symTab.add(position, paramContext.Identifier().getText(), new IntType()));
+        }
+      }
+
+      CruxParser.StmtListContext stmtListContext = stmtBlockContext.stmtList();
+
+      List<Statement> statementList = new ArrayList<>();
+      for(CruxParser.StmtContext stmtContext : stmtListContext.stmt()){
+        Statement statement = stmtContext.accept(stmtVisitor);
+        statementList.add(statement);
+      }
+      StatementList statements = new StatementList(position, statementList);
+      return new FunctionDefinition(position, symbol, parameters, statements);
+    }
+
   }
 
 
