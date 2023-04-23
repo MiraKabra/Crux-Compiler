@@ -2,6 +2,7 @@ package crux.ast;
 
 import crux.ast.*;
 import crux.ast.OpExpr.Operation;
+import crux.ir.insts.BinaryOperator;
 import crux.pt.CruxBaseVisitor;
 import crux.pt.CruxParser;
 import crux.ast.types.*;
@@ -329,22 +330,101 @@ public final class ParseTreeLower {
     
   }
 
+  //'>=' | '<=' | '!=' | '==' | '>' | '<'
   private final class ExprVisitor extends CruxBaseVisitor<Expression> {
     /**
      * Parse Expr0 to OpExpr Node Parsing the expr should be exactly as described in the grammer
      */
-    public Expression visitExpr0(CruxParser.Expr0Context ctx) { }
+    public Expression visitExpr0(CruxParser.Expr0Context ctx) {
+      List<CruxParser.Expr1Context> expr1ContextList = ctx.expr1();
+      CruxParser.Op0Context op0Context = ctx.op0();
+      if(op0Context == null){
+        return expr1ContextList.get(0).accept(exprVisitor);
+      }else{
+        Expression left = expr1ContextList.get(0).accept(exprVisitor);
+        Expression right = expr1ContextList.get(1).accept(exprVisitor);
+        Operation op = Operation.GE;
+        switch (op0Context.getText()){
+          case ">=":
+            op = Operation.GE;
+            break;
+          case "<=":
+            op = Operation.LE;
+            break;
+          case "!=":
+            op = Operation.NE;
+            break;
+          case "==":
+            op = Operation.EQ;
+            break;
+          case ">":
+            op = Operation.GT;
+            break;
+          case "<":
+            op = Operation.LT;
+        }
+        return new OpExpr(makePosition(ctx), op, left, right);
+      }
+    }
 
-    /**
+    /** '+' | '-' | '||' ;
      * Parse Expr1 to OpExpr Node Parsing the expr should be exactly as described in the grammer
      */
-    public Expression visitExpr1(CruxParser.Expr1Context ctx) { }
+    public Expression visitExpr1(CruxParser.Expr1Context ctx) {
+      CruxParser.Expr2Context expr2Context = ctx.expr2();
+      CruxParser.Expr1Context expr1Context = ctx.expr1();
+      CruxParser.Op1Context op1Context = ctx.op1();
+
+      if(op1Context == null){
+        return expr2Context.accept(exprVisitor);
+      }else{
+        Expression left = expr1Context.accept(exprVisitor);
+        Expression right = expr2Context.accept(exprVisitor);
+        Operation op = Operation.MULT;
+        switch (op1Context.getText()){
+          case "+":
+            op = Operation.ADD;
+            break;
+          case "-":
+            op = Operation.SUB;
+            break;
+          case "||":
+            op = Operation.LOGIC_OR;
+            break;
+        }
+        return new OpExpr(makePosition(ctx), op, left, right);
+      }
+    }
 
 
-    /**
+    /** op2 : '*' | '/' | '&&' ;
      * Parse Expr2 to OpExpr Node Parsing the expr should be exactly as described in the grammer
      */
-    public Expression visitExpr2(CruxParser.Expr2Context ctx) { }
+    public Expression visitExpr2(CruxParser.Expr2Context ctx) {
+      CruxParser.Expr3Context expr3Context = ctx.expr3();
+      CruxParser.Expr2Context expr2Context = ctx.expr2();
+      CruxParser.Op2Context op2Context = ctx.op2();
+
+      if(op2Context == null){
+        return expr3Context.accept(exprVisitor);
+      }else{
+        Expression left = expr2Context.accept(exprVisitor);
+        Expression right = expr3Context.accept(exprVisitor);
+        Operation op = Operation.MULT;
+        switch (op2Context.getText()){
+          case "*":
+            op = Operation.MULT;
+            break;
+          case "/":
+            op = Operation.DIV;
+            break;
+          case "&&":
+            op = Operation.LOGIC_AND;
+            break;
+        }
+        return new OpExpr(makePosition(ctx), op, left, right);
+      }
+    }
 
 
     /**
@@ -352,6 +432,22 @@ public final class ParseTreeLower {
      */
      @Override
      public Expression visitExpr3(CruxParser.Expr3Context ctx) {
+       CruxParser.Expr3Context expr3Context = ctx.expr3();
+       CruxParser.Expr0Context expr0Context = ctx.expr0();
+       CruxParser.DesignatorContext designatorContext = ctx.designator();
+       CruxParser.CallExprContext callExprContext = ctx.callExpr();
+       CruxParser.LiteralContext literalContext = ctx.literal();
+       if(expr3Context != null){
+         return expr3Context.accept(exprVisitor);
+       }else if(expr0Context != null){
+         return expr0Context.accept(exprVisitor);
+       }else if(designatorContext != null){
+         return designatorContext.accept(exprVisitor);
+       }else if(callExprContext != null){
+         return callExprContext.accept(exprVisitor);
+       }else{
+         return literalContext.accept(exprVisitor);
+       }
      }
 
     /**
@@ -359,6 +455,14 @@ public final class ParseTreeLower {
      */
      @Override
      public Call visitCallExpr(CruxParser.CallExprContext ctx) {
+       Position position = makePosition(ctx);
+       Symbol callee = symTab.lookup(makePosition(ctx), ctx.Identifier().getText());
+       CruxParser.ExprListContext exprListContext = ctx.exprList();
+       List<Expression> arguments = new ArrayList<>();
+       for(CruxParser.Expr0Context expr0Context : exprListContext.expr0()){
+         arguments.add(expr0Context.accept(exprVisitor));
+       }
+       return new Call(position, callee, arguments);
      }
 
     /**
@@ -367,6 +471,15 @@ public final class ParseTreeLower {
      */
      @Override
      public Expression visitDesignator(CruxParser.DesignatorContext ctx) {
+
+       CruxParser.Expr0Context expr0Context = ctx.expr0();
+       Symbol symbol = symTab.lookup(makePosition(ctx), ctx.Identifier().getText());
+       if(expr0Context == null){
+         return new VarAccess(makePosition(ctx), symbol);
+       }else{
+         Expression expression = expr0Context.accept(exprVisitor);
+         return new ArrayAccess(makePosition(ctx), symbol, expression);
+       }
      }
 
     /**
@@ -374,6 +487,16 @@ public final class ParseTreeLower {
      */
      @Override
      public Expression visitLiteral(CruxParser.LiteralContext ctx) {
+       Position position = makePosition(ctx);
+       if(ctx.Integer() != null){
+         return new LiteralInt(position, Long.parseLong(ctx.Integer().getText()));
+       }else{
+         if(ctx.True() != null){
+           return new LiteralBool(position, true);
+         }else{
+           return new LiteralBool(position, false);
+         }
+       }
      }
   }
 }
