@@ -6,6 +6,7 @@ import crux.ast.types.*;
 
 import java.io.PrintStream;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -79,12 +80,24 @@ public final class SymbolTable {
 
   private final PrintStream err;
   private final ArrayList<Map<String, Symbol>> symbolScopes = new ArrayList<>();
-
+  private int currScopeIndex = -1;
   private boolean encounteredError = false;
 
   SymbolTable(PrintStream err) {
     this.err = err;
     //TODO
+    //Add the built in function names
+    Map<String, Symbol> globalScope = new HashMap<>();
+    //globalScope.put("main", new Symbol("main", new FuncType(new TypeList(), new VoidType())));
+    globalScope.put("readInt", new Symbol("readInt", new FuncType(new TypeList(), new IntType())));
+    globalScope.put("readChar", new Symbol("readChar", new FuncType(new TypeList(), new IntType())));
+    globalScope.put("printBool", new Symbol("printBool", new FuncType(new TypeList(new ArrayList<>(Arrays.asList(new BoolType()))), new VoidType())));
+    globalScope.put("printInt", new Symbol("printInt", new FuncType(new TypeList(new ArrayList<>(Arrays.asList(new IntType()))), new VoidType())));
+    globalScope.put("printChar", new Symbol("printChar", new FuncType(new TypeList(new ArrayList<>(Arrays.asList(new IntType()))), new VoidType())));
+    globalScope.put("println", new Symbol("println", new FuncType(new TypeList(), new VoidType())));
+    //Add the global scope containing inbuilt functions
+    symbolScopes.add(globalScope);
+    currScopeIndex++;
   }
 
   boolean hasEncounteredError() {
@@ -97,6 +110,9 @@ public final class SymbolTable {
 
   void enter() {
     //TODO
+    Map<String, Symbol> newScope = new HashMap<>();
+    symbolScopes.add(newScope);
+    currScopeIndex++;
   }
 
   /**
@@ -105,6 +121,8 @@ public final class SymbolTable {
 
   void exit() {
     //TODO
+    symbolScopes.remove(symbolScopes.size() -1);
+    currScopeIndex--;
   }
 
   /**
@@ -113,7 +131,16 @@ public final class SymbolTable {
    */
   Symbol add(Position pos, String name, Type type) {
     //TODO
-    return null;
+    Map<String, Symbol> currScope = symbolScopes.get(currScopeIndex);
+    if(currScope.containsKey(name)){
+      err.printf("DeclareSymbolError%s[Already defined in this scope %s.]%n", pos, name);
+      encounteredError = true;
+      return new Symbol(name, "DeclareSymbolError");
+    }else{
+      Symbol newSymbol = new Symbol(name, type);
+      symbolScopes.get(currScopeIndex).put(name, newSymbol);
+      return newSymbol;
+    }
   }
 
   /**
@@ -135,7 +162,18 @@ public final class SymbolTable {
    * Try to find a symbol in the table starting form the most recent scope.
    */
   private Symbol find(String name) {
-    //TODO
-    return null;
+    //will return null if no symbol found
+    return findByIndex(name, currScopeIndex);
+  }
+  private Symbol findByIndex(String name, int index){
+    //If did not find till global scope, then no symbol exists
+    if(index == -1) return null;
+    if(symbolScopes.get(index).containsKey(name)){
+      return symbolScopes.get(index).get(name);
+    }else{
+      index--;
+      Symbol symbol = findByIndex(name, index);
+      return symbol;
+    }
   }
 }
