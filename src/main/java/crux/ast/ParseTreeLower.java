@@ -160,7 +160,7 @@ public final class ParseTreeLower {
           parameters.add(symTab.add(makePosition(paramContext), paramContext.Identifier().getText(), new IntType()));
         }
       }
-      symTab.exit();
+      //symTab.exit();
       CruxParser.StmtListContext stmtListContext = stmtBlockContext.stmtList();
 
       List<Statement> statementList = new ArrayList<>();
@@ -169,6 +169,7 @@ public final class ParseTreeLower {
         statementList.add(statement);
       }
       StatementList statements = new StatementList(makePosition(stmtListContext), statementList);
+      symTab.exit();
       return new FunctionDefinition(position, symbol, parameters, statements);
     }
 
@@ -257,17 +258,34 @@ public final class ParseTreeLower {
       List<Statement> then_statement_list = new ArrayList<>();
       List<Statement> else_statement_list = new ArrayList<>();
 
+//      for(CruxParser.StmtContext stmtContext : stmtBlockContexts.get(0).stmtList().stmt()){
+//        then_statement_list.add(stmtContext.accept(stmtVisitor));
+//      }
+//
+//      for(CruxParser.StmtContext stmtContext : stmtBlockContexts.get(1).stmtList().stmt()){
+//        else_statement_list.add(stmtContext.accept(stmtVisitor));
+//      }
+//
+//      StatementList thenBlock = new StatementList(makePosition(stmtBlockContexts.get(0)), then_statement_list);
+//      StatementList elseBlock = new StatementList(makePosition(stmtBlockContexts.get(1)), else_statement_list);
+//
+//      return new IfElseBranch(position, condition, thenBlock, elseBlock);
+      symTab.enter();
       for(CruxParser.StmtContext stmtContext : stmtBlockContexts.get(0).stmtList().stmt()){
         then_statement_list.add(stmtContext.accept(stmtVisitor));
       }
-
-      for(CruxParser.StmtContext stmtContext : stmtBlockContexts.get(1).stmtList().stmt()){
-        else_statement_list.add(stmtContext.accept(stmtVisitor));
-      }
-
       StatementList thenBlock = new StatementList(makePosition(stmtBlockContexts.get(0)), then_statement_list);
-      StatementList elseBlock = new StatementList(makePosition(stmtBlockContexts.get(1)), else_statement_list);
-
+      symTab.exit();
+      //StatementList elseBlock = null;
+      StatementList elseBlock = new StatementList(makePosition(stmtBlockContexts.get(0)), new ArrayList<>());
+      symTab.enter();
+      if(stmtBlockContexts.size() > 1){
+        for(CruxParser.StmtContext stmtContext : stmtBlockContexts.get(1).stmtList().stmt()){
+          else_statement_list.add(stmtContext.accept(stmtVisitor));
+        }
+        elseBlock = new StatementList(makePosition(stmtBlockContexts.get(1)), else_statement_list);
+      }
+      symTab.exit();
       return new IfElseBranch(position, condition, thenBlock, elseBlock);
     }
 
@@ -280,7 +298,7 @@ public final class ParseTreeLower {
      * @return an AST {@link Loop}
      */
     public Statement visitForStmt(CruxParser.ForStmtContext ctx) {
-
+      symTab.enter();
       CruxParser.AssignStmtContext assignStmtContext = ctx.assignStmt();
       CruxParser.Expr0Context expr0Context = ctx.expr0();
       CruxParser.AssignStmtNoSemiContext assignStmtNoSemiContext = ctx.assignStmtNoSemi();
@@ -296,7 +314,7 @@ public final class ParseTreeLower {
         statements.add(stmtContext.accept(stmtVisitor));
       }
       StatementList body = new StatementList(makePosition(stmtBlockContext), statements);
-
+      symTab.exit();
       return new For(position, init, cond, increment, body);
     }
 
@@ -438,7 +456,10 @@ public final class ParseTreeLower {
        CruxParser.CallExprContext callExprContext = ctx.callExpr();
        CruxParser.LiteralContext literalContext = ctx.literal();
        if(expr3Context != null){
-         return expr3Context.accept(exprVisitor);
+         //return expr3Context.accept(exprVisitor);
+         Expression expression = expr3Context.accept(exprVisitor);
+         Operation operation = Operation.LOGIC_NOT;
+         return new OpExpr(makePosition(ctx), operation, expression, null);
        }else if(expr0Context != null){
          return expr0Context.accept(exprVisitor);
        }else if(designatorContext != null){

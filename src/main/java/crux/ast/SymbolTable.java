@@ -88,7 +88,7 @@ public final class SymbolTable {
     //TODO
     //Add the built in function names
     Map<String, Symbol> globalScope = new HashMap<>();
-    globalScope.put("main", new Symbol("main", new FuncType(new TypeList(), new VoidType())));
+    //globalScope.put("main", new Symbol("main", new FuncType(new TypeList(), new VoidType())));
     globalScope.put("readInt", new Symbol("readInt", new FuncType(new TypeList(), new IntType())));
     globalScope.put("readChar", new Symbol("readChar", new FuncType(new TypeList(), new IntType())));
     globalScope.put("printBool", new Symbol("printBool", new FuncType(new TypeList(new ArrayList<>(Arrays.asList(new BoolType()))), new VoidType())));
