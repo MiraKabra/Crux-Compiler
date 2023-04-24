@@ -2,14 +2,11 @@ package crux.ast;
 
 import crux.ast.*;
 import crux.ast.OpExpr.Operation;
-import crux.ir.insts.BinaryOperator;
 import crux.pt.CruxBaseVisitor;
 import crux.pt.CruxParser;
 import crux.ast.types.*;
 import crux.ast.SymbolTable.Symbol;
-import javafx.geometry.Pos;
 import org.antlr.v4.runtime.ParserRuleContext;
-import org.antlr.v4.runtime.tree.ParseTreeVisitor;
 
 import java.io.PrintStream;
 import java.util.ArrayList;
