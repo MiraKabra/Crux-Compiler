@@ -104,12 +104,7 @@ public final class TypeChecker {
         expression.accept(this);
         callList.append(((BaseNode)expression).getType());
       }
-      if(!requiredArgType.equivalent(callList)){
-        setNodeType(call, new ErrorType("given argument type does not match required argument type"));
-        return null;
-      }
-      //Set the type of this call to return type
-      setNodeType(call, funcType.getRet());
+      setNodeType(call, funcType.call(callList));
       return null;
     }
 
@@ -130,9 +125,22 @@ public final class TypeChecker {
       List<Symbol> parameters = functionDefinition.getParameters();
       StatementList statementList = functionDefinition.getStatements();
       FuncType currFuncType = (FuncType) symbol.getType();
+
       boolean return_required = false;
+
       if(!currFuncType.getRet().equivalent(new VoidType())){
         return_required = true;
+      }
+
+      if(symbol.getName().equals("main")){
+        if(return_required){
+          addTypeError(functionDefinition, "main function need to be type void");
+          return null;
+        }
+        if(parameters.size() != 0){
+          addTypeError(functionDefinition, "main function should have zero arguments");
+          return null;
+        }
       }
       if(return_required){
         root.push(0);
@@ -170,13 +178,8 @@ public final class TypeChecker {
     public Void visit(ArrayAccess access) {
       ArrayType arrayType =(ArrayType) access.getBase().getType();
       access.getIndex().accept(this);
-      if(!new IntType().equivalent(((BaseNode)access.getIndex()).getType())){
-        setNodeType(access, new ErrorType("index has to be integer type"));
-        return null;
-      }
-      Type bool_or_int = arrayType.getBase();
-      //did not check for type(size of array) i.e. arrayType.extent
-      setNodeType(access, bool_or_int);
+
+      setNodeType(access, arrayType.index(((BaseNode)access.getIndex()).getType()));
       return null;
     }
 
