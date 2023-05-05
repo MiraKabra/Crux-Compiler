@@ -142,14 +142,12 @@ public final class TypeChecker {
           return null;
         }
       }
-      if(return_required){
-        root.push(0);
-      }
+      root.push(0);
       statementList.accept(this);
       if(return_required){
         for(Node statement: statementList.getChildren()){
           if(statement instanceof Return){
-            if(((Return) statement).getType().equivalent(currFuncType.getRet())){
+            if(!((Return) statement).getType().equivalent(currFuncType.getRet())){
               addTypeError(statement, "Not returning the correct type");
             }
           }
@@ -164,9 +162,9 @@ public final class TypeChecker {
 
     @Override
     public Void visit(IfElseBranch ifElseBranch) {
-      OpExpr cond = (OpExpr) ifElseBranch.getCondition();
+      Expression cond = ifElseBranch.getCondition();
       cond.accept(this);
-      if(!(new BoolType().equivalent(cond.getType()))){
+      if(!(new BoolType().equivalent(((BaseNode)cond).getType()))){
         addTypeError(ifElseBranch, "the condition of if else should be of type boolean");
       }
       ifElseBranch.getThenBlock().accept(this);
@@ -185,13 +183,15 @@ public final class TypeChecker {
 
     @Override
     public Void visit(LiteralBool literalBool) {
-      literalBool.setType(new BoolType());
+      setNodeType(literalBool, new BoolType());
+      //literalBool.setType(new BoolType());
       return null;
     }
 
     @Override
     public Void visit(LiteralInt literalInt) {
-      literalInt.setType(new IntType());
+      setNodeType(literalInt, new IntType());
+      //literalInt.setType(new IntType());
       return null;
     }
 
@@ -200,9 +200,9 @@ public final class TypeChecker {
       Assignment assignment = forloop.getInit();
       assignment.accept(this);
 
-      OpExpr condition = (OpExpr) forloop.getCond();
+      Expression condition = forloop.getCond();
       condition.accept(this);
-      if(!(new BoolType().equivalent(condition.getType()))){
+      if(!(new BoolType().equivalent(((BaseNode)condition).getType()))){
         addTypeError(forloop, "the condition of for loop should be of type boolean");
       }
       Assignment increment = forloop.getIncrement();
@@ -215,7 +215,9 @@ public final class TypeChecker {
     @Override
     public Void visit(OpExpr op) {
       op.getLeft().accept(this);
-      op.getRight().accept(this);
+      if(op.getRight() != null){
+        op.getRight().accept(this);
+      }
       Type resultType = new BoolType();
       switch (op.getOp()){
         case GE:
@@ -281,10 +283,10 @@ public final class TypeChecker {
           return_included = true;
         }
       }
-      root.pop();
-      if(!return_included){
-        int temp = root.pop();
-        root.push(temp+1);
+      int temp = root.pop() + (return_included? 0 : 1);
+
+      if(!return_included && temp > 0){
+        root.push(root.pop() + 1);
       }
       return null;
     }
