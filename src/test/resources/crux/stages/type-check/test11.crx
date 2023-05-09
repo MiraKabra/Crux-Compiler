@@ -1,8 +1,0 @@
-// test presence of built-in functions
-
-void main() {
-  printInt(7);
-  printBool(true);
-  println();
-  readInt();
-}

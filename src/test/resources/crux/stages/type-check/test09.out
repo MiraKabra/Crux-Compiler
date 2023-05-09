@@ -1,9 +1,0 @@
-Crux Program has no type errors.
-
-rec(int a) {
-  printInt(/*int*/ a);
-}
-main() {
-  rec(/*int*/ 41);
-}
-

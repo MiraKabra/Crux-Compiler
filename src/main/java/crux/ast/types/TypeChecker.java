@@ -5,27 +5,22 @@ import crux.ast.*;
 import crux.ast.traversal.NullNodeVisitor;
 
 import java.util.ArrayList;
-import java.util.HashMap;
 import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 /**
  * This class will associate types with the AST nodes from Stage 2
  */
 public final class TypeChecker {
-  private Map<Node, Type> nodeTypeMap;
   private final ArrayList<String> errors = new ArrayList<>();
-  private Stack<Integer> root = new Stack<>();
-
-  public TypeChecker(){
-    nodeTypeMap = new HashMap<>();
-  }
+  private boolean[] flagReturn;
+  private int[] count;
   public ArrayList<String> getErrors() {
     return errors;
   }
 
   public void check(DeclarationList ast) {
+    flagReturn = new boolean[1];
+    count = new int[1];
     var inferenceVisitor = new TypeInferenceVisitor();
     inferenceVisitor.visit(ast);
   }
@@ -121,6 +116,7 @@ public final class TypeChecker {
 
     @Override
     public Void visit(FunctionDefinition functionDefinition) {
+
       Symbol symbol = functionDefinition.getSymbol();
       List<Symbol> parameters = functionDefinition.getParameters();
       StatementList statementList = functionDefinition.getStatements();
@@ -142,8 +138,11 @@ public final class TypeChecker {
           return null;
         }
       }
-      root.push(0);
       statementList.accept(this);
+
+      if(return_required && getFlag()){
+        addTypeError(functionDefinition, "Not returning from all paths");
+      }
       if(return_required){
         for(Node statement: statementList.getChildren()){
           if(statement instanceof Return){
@@ -153,13 +152,15 @@ public final class TypeChecker {
           }
         }
       }
-
-      if(return_required && root.pop() > 0){
-        addTypeError(functionDefinition, "error: Not returning at all possible paths.");
-      }
       return null;
     }
 
+    private boolean getFlag(){
+      return flagReturn[0];
+    }
+    private void setFlag(boolean val){
+      flagReturn[0] = val;
+    }
     @Override
     public Void visit(IfElseBranch ifElseBranch) {
       Expression cond = ifElseBranch.getCondition();
@@ -167,8 +168,15 @@ public final class TypeChecker {
       if(!(new BoolType().equivalent(((BaseNode)cond).getType()))){
         addTypeError(ifElseBranch, "the condition of if else should be of type boolean");
       }
+      boolean[] temp = new boolean[2];
+      setFlag(true);
       ifElseBranch.getThenBlock().accept(this);
+      temp[0] = getFlag();
+      setFlag(true);
       ifElseBranch.getElseBlock().accept(this);
+      temp[1] = getFlag();
+      boolean newFlagVal = (temp[1] & temp[0]) || (temp[1] ^ temp[0]);
+      setFlag(newFlagVal);
       return null;
     }
 
@@ -208,7 +216,11 @@ public final class TypeChecker {
       Assignment increment = forloop.getIncrement();
       increment.accept(this);
       StatementList statementList = forloop.getBody();
+      int prevCount = count[0];
+      setFlag(true);
       statementList.accept(this);
+      int currCount = count[0];
+      setFlag((currCount > prevCount) || getFlag());
       return null;
     }
 
@@ -268,26 +280,28 @@ public final class TypeChecker {
       Expression expression = ret.getValue();
       expression.accept(this);
       setNodeType(ret, ((BaseNode)expression).getType());
+      setFlag(false);
+      incrementCount();
       return null;
+    }
+
+    private void incrementCount(){
+      count[0]++;
     }
 
     @Override
     public Void visit(StatementList statementList) {
-      root.push(0);
+      setFlag(true);
+      boolean found = false;
       List<Node> list = statementList.getChildren();
-      boolean return_included = false;
       for(Node node: list){
         Statement statement = (Statement) node;
         statement.accept(this);
-        if(is_return_type(statement)){
-          return_included = true;
+        if(!getFlag()){
+          found = true;
         }
       }
-      int temp = root.pop() + (return_included? 0 : 1);
-
-      if(!return_included && temp > 0){
-        root.push(root.pop() + 1);
-      }
+      setFlag(!found);
       return null;
     }
     private boolean is_return_type(Statement statement){

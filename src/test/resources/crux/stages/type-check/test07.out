@@ -1,8 +1,0 @@
-Crux Program has no type errors.
-
-main() {
-  int a;
-  /*int*/ a = /*int*/ 42;
-  printInt(/*int*/ a);
-}
-
