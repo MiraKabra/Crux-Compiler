@@ -1,9 +1,0 @@
-// test parameter passing
-
-void rec(int a) {
-  printInt(a);
-}
-
-void main() {
-  rec(41);
-}

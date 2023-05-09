@@ -1,7 +1,0 @@
-Crux Program has no type errors.
-
-main() {
-  printBool(/*bool*/ true);
-  printBool(/*bool*/ false);
-}
-
