@@ -1,5 +1,0 @@
-// test add
-
-void main() {
-  printInt(1 + 1);
-}

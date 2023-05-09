@@ -10,4 +10,11 @@ public final class VoidType extends Type implements java.io.Serializable {
   public String toString() {
     return "void";
   }
+
+
+  @Override
+  public boolean equivalent(Type that) {
+    if(that instanceof VoidType) return true;
+    return false;
+  }
 }

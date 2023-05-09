@@ -1,9 +1,0 @@
-Crux Program has no type errors.
-
-myInt() {
-  return readInt();
-}
-main() {
-  printInt(myInt());
-}
-
