@@ -7,10 +7,7 @@ import crux.ast.traversal.NodeVisitor;
 import crux.ast.types.*;
 import crux.ir.insts.*;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 
@@ -239,7 +236,35 @@ public final class ASTLower implements NodeVisitor<InstPair> {
    */
   @Override
   public InstPair visit(Call call) {
-    return null;
+    Symbol callee = call.getCallee();
+    List<Expression> arguments = call.getArguments();
+    Instruction firstArgumentNode = null;
+    Instruction prevArgumentNode = null;
+
+    List<LocalVar> params = new ArrayList<>();
+
+    for(Expression expression: arguments){
+      InstPair instPair = expression.accept(this);
+      params.add(instPair.getVariable());
+      if(firstArgumentNode == null){
+        firstArgumentNode = instPair.getStart();
+        prevArgumentNode = instPair.getEnd();
+      }else{
+        prevArgumentNode.setNext(0, instPair.getStart());
+        prevArgumentNode = instPair.getEnd();
+      }
+    }
+    CallInst callInst = null;
+    if(((FuncType)callee.getType()).getRet() instanceof VoidType){
+      callInst = new CallInst(callee, params);
+      prevArgumentNode.setNext(0, callInst);
+      return new InstPair(firstArgumentNode, callInst, null);
+    }else{
+      LocalVar returnVar = mCurrentFunction.getTempVar(callee.getType());
+      callInst = new CallInst(returnVar, callee, params);
+      prevArgumentNode.setNext(0, callInst);
+      return new InstPair(firstArgumentNode, callInst, returnVar);
+    }
   }
 
   /**
@@ -248,7 +273,134 @@ public final class ASTLower implements NodeVisitor<InstPair> {
    */
   @Override
   public InstPair visit(OpExpr operation) {
+    Operation op = operation.getOp();
+
+    boolean isCompare = isCompareOperation(op);
+    boolean isBinary = isBinaryOperation(op);
+
+    CompareInst.Predicate predicate = null;
+    BinaryOperator.Op binaryOp = null;
+
+    if(isCompare){
+      if(op == Operation.GE){
+        predicate = CompareInst.Predicate.GE;
+      }else if(op == Operation.LE){
+        predicate = CompareInst.Predicate.LE;
+      }else if(op == Operation.NE){
+        predicate = CompareInst.Predicate.NE;
+      }else if(op == Operation.EQ){
+        predicate = CompareInst.Predicate.EQ;
+      }else if(op == Operation.GT){
+        predicate = CompareInst.Predicate.GT;
+      }else if(op == Operation.LT){
+        predicate = CompareInst.Predicate.LT;
+      }
+
+      InstPair lhs = operation.getLeft().accept(this);
+      InstPair rhs = operation.getRight().accept(this);
+      LocalVar destVar = mCurrentFunction.getTempVar(new BoolType());
+      CompareInst compareInst = new CompareInst(destVar, predicate, lhs.getVariable(), rhs.getVariable());
+
+      lhs.getEnd().setNext(0, rhs.getStart());
+      rhs.getEnd().setNext(0, compareInst);
+
+      return new InstPair(lhs.getStart(), compareInst, destVar);
+    }
+    if(isBinary){
+      if(op == Operation.ADD){
+        binaryOp = BinaryOperator.Op.Add;
+      }else if(op == Operation.SUB){
+        binaryOp = BinaryOperator.Op.Sub;
+      }else if(op == Operation.MULT){
+        binaryOp = BinaryOperator.Op.Mul;
+      }else if(op == Operation.DIV){
+        binaryOp = BinaryOperator.Op.Div;
+      }
+
+      InstPair lhs = operation.getLeft().accept(this);
+      InstPair rhs = operation.getRight().accept(this);
+      LocalVar destVar = mCurrentFunction.getTempVar(new BoolType());
+      BinaryOperator binaryInst = new BinaryOperator(binaryOp, destVar, lhs.getVariable(), rhs.getVariable());
+
+      lhs.getEnd().setNext(0, rhs.getStart());
+      rhs.getEnd().setNext(0, binaryInst);
+
+      return new InstPair(lhs.getStart(), binaryInst, destVar);
+    }
+    else if(op == Operation.LOGIC_AND){
+      InstPair lhs = operation.getLeft().accept(this);
+      JumpInst jumpInst = new JumpInst(lhs.getVariable());
+      LocalVar destVar = mCurrentFunction.getTempVar(new BoolType());
+      CopyInst copyInstLeft = new CopyInst(destVar, lhs.getVariable());
+      InstPair rhs = operation.getRight().accept(this);
+      CopyInst copyInstRight = new CopyInst(destVar, rhs.getVariable());
+      NopInst nopInst = new NopInst();
+
+      lhs.getEnd().setNext(0, jumpInst);
+      jumpInst.setNext(0, copyInstLeft);
+      copyInstLeft.setNext(0, nopInst);
+
+      jumpInst.setNext(1, rhs.getStart());
+      rhs.getEnd().setNext(0, copyInstRight);
+      copyInstRight.setNext(0, nopInst);
+
+      return new InstPair(lhs.getStart(), nopInst, destVar);
+
+    }else if(op == Operation.LOGIC_OR){
+      InstPair lhs = operation.getLeft().accept(this);
+      JumpInst jumpInst = new JumpInst(lhs.getVariable());
+
+      InstPair rhs = operation.getRight().accept(this);
+      LocalVar destVar = mCurrentFunction.getTempVar(new BoolType());
+      CopyInst rhsCopyInst = new CopyInst(destVar, rhs.getVariable());
+
+      CopyInst truCopyInst = new CopyInst(destVar, lhs.getVariable());
+      NopInst nopInst = new NopInst();
+
+      lhs.getEnd().setNext(0, jumpInst);
+      jumpInst.setNext(0, rhs.getStart());
+      rhs.getEnd().setNext(0, rhsCopyInst);
+      rhsCopyInst.setNext(0, nopInst);
+
+      jumpInst.setNext(1, truCopyInst);
+      truCopyInst.setNext(0, nopInst);
+
+      return new InstPair(lhs.getStart(), nopInst, destVar);
+
+    }else if(op == Operation.LOGIC_NOT){
+      InstPair lhs = operation.getLeft().accept(this);
+      LocalVar destVar = mCurrentFunction.getTempVar(new BoolType());
+
+      UnaryNotInst unaryNotInst = new UnaryNotInst(destVar, lhs.getVariable());
+      lhs.getEnd().setNext(0, unaryNotInst);
+
+      return new InstPair(lhs.getStart(), unaryNotInst, destVar);
+    }
     return null;
+  }
+
+  private boolean isCompareOperation(Operation op){
+    Set<Operation> set = new HashSet<>();
+    set.add(Operation.GE);
+    set.add(Operation.GT);
+    set.add(Operation.LE);
+    set.add(Operation.LT);
+    set.add(Operation.EQ);
+    set.add(Operation.NE);
+
+    if(set.contains(op)) return true;
+    return false;
+  }
+
+  private boolean isBinaryOperation(Operation op){
+    Set<Operation> set = new HashSet<>();
+    set.add(Operation.ADD);
+    set.add(Operation.SUB);
+    set.add(Operation.MULT);
+    set.add(Operation.DIV);
+
+    if(set.contains(op)) return true;
+    return false;
   }
 
   private InstPair visit(Expression expression) {
@@ -297,7 +449,11 @@ public final class ASTLower implements NodeVisitor<InstPair> {
    */
   @Override
   public InstPair visit(Return ret) {
-    return null;
+    InstPair valPair = ret.getValue().accept(this);
+    ReturnInst returnInst = new ReturnInst(valPair.getVariable());
+    valPair.getEnd().setNext(0, returnInst);
+
+    return new InstPair(valPair.getStart(), returnInst, null);
   }
 
   /**
