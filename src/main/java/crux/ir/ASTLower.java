@@ -44,7 +44,7 @@ public final class ASTLower implements NodeVisitor<InstPair> {
   private Function mCurrentFunction = null;
 
   private Map<Symbol, LocalVar> mCurrentLocalVarMap = null;
-
+  Stack<Instruction> stack = new Stack<>();
   /**
    * A constructor to initialize member variables
    */
@@ -461,7 +461,8 @@ public final class ASTLower implements NodeVisitor<InstPair> {
    */
   @Override
   public InstPair visit(Break brk) {
-    return null;
+    NopInst nopInst = new NopInst();
+    return new InstPair(stack.peek(), nopInst, null);
   }
 
   /**
@@ -469,7 +470,20 @@ public final class ASTLower implements NodeVisitor<InstPair> {
    */
   @Override
   public InstPair visit(IfElseBranch ifElseBranch) {
-    return null;
+
+    InstPair conditionPair = ifElseBranch.getCondition().accept(this);
+    JumpInst jumpInst = new JumpInst(conditionPair.getVariable());
+    InstPair elsePair = ifElseBranch.getElseBlock().accept(this);
+    InstPair thenPair = ifElseBranch.getThenBlock().accept(this);
+    NopInst nopInst = new NopInst();
+
+    conditionPair.getEnd().setNext(0, jumpInst);
+    jumpInst.setNext(0, elsePair.getStart());
+    jumpInst.setNext(1, thenPair.getStart());
+    elsePair.getEnd().setNext(0, nopInst);
+    thenPair.getEnd().setNext(0, nopInst);
+
+    return new InstPair(conditionPair.getStart(), nopInst, null);
   }
 
   /**
@@ -477,6 +491,23 @@ public final class ASTLower implements NodeVisitor<InstPair> {
    */
   @Override
   public InstPair visit(For loop) {
-    return null;
+
+    InstPair initPair = loop.getInit().accept(this);
+    InstPair condition = loop.getCond().accept(this);
+    JumpInst jumpInst = new JumpInst(condition.getVariable());
+    NopInst nopInst = new NopInst();
+    stack.push(nopInst);
+    InstPair body = loop.getBody().accept(this);
+    InstPair increment = loop.getIncrement().accept(this);
+
+    initPair.getEnd().setNext(0, condition.getStart());
+    condition.getEnd().setNext(0, jumpInst);
+    jumpInst.setNext(0, nopInst);
+    jumpInst.setNext(1, body.getStart());
+    body.getEnd().setNext(0, increment.getStart());
+    increment.getEnd().setNext(0, condition.getStart());
+    stack.pop();
+
+    return new InstPair(initPair.getStart(), nopInst, null);
   }
 }
