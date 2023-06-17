@@ -3,7 +3,6 @@ package crux.backend;
 import crux.ast.SymbolTable.Symbol;
 import crux.ir.*;
 import crux.ir.insts.*;
-import crux.printing.IRValueFormatter;
 
 import java.util.*;
 
@@ -28,7 +27,7 @@ public final class CodeGen extends InstVisitor {
     out = new CodePrinter("a.s");
   }
 
-  private Integer getLocalVarStackIndex(Variable variable){  // add to varStackMap if doesn't exists
+  private Integer getVarFromStack(Variable variable){  // add to varStackMap if doesn't exists
     if(stack.containsKey(variable)){
       return stack.get(variable);
     } else {
@@ -37,13 +36,13 @@ public final class CodeGen extends InstVisitor {
     }
   }
 
-//  private int getStackPosition(Variable variable){
-//    if(!stack.containsKey(variable)){
-//      totalVarNum++;
-//      stack.put(variable, totalVarNum);
-//    }
-//    return stack.get(variable);
-//  }
+  private int getStackPosition(Variable variable){
+    if(!stack.containsKey(variable)){
+      totalVarNum++;
+      stack.put(variable, totalVarNum);
+    }
+    return stack.get(variable);
+  }
 
   /**
    * It should allocate space for globals call genCode for each Function
@@ -65,16 +64,9 @@ public final class CodeGen extends InstVisitor {
   }
 
   private void genCode(Function function, int[] count){
+
     labels = function.assignLabels(count);
-
-    out.printCode(".globl " + function.getName());
-    out.printLabel(function.getName() + ":");
-    slotNum = function.getNumTempAddressVars() + function.getNumTempVars();
-    if(slotNum % 2 != 0){
-      slotNum++;
-    }
-    out.printCode("enter $(8 * " + slotNum + "), $0");
-
+    initialSignature(function);
     List<LocalVar> arguments = function.getArguments();
     int extra = 0;
     for(int i = 1; i <= arguments.size(); i++){
@@ -86,29 +78,47 @@ public final class CodeGen extends InstVisitor {
         out.printCode("movq %r10, " + position + "(%rbp)");
         extra++;
       }
-      switch (i){
-        case 1:
-          out.printCode("movq %rdi, -8(%rbp)");
-          break;
-        case 2:
-          out.printCode("movq %rsi, -16(%rbp)");
-          break;
-        case 3:
-          out.printCode("movq %rdx, -24(%rbp)");
-          break;
-        case 4:
-          out.printCode("movq %rcx, -32(%rbp)");
-          break;
-        case 5:
-          out.printCode("movq %r8, -40(%rbp)");
-          break;
-        case 6:
-          out.printCode("movq %r9, -48(%rbp)");
-          break;
-      }
+      putInRegister(i);
       totalVarNum++;
     }
 
+    dfs(function);
+  }
+
+  private void initialSignature(Function function){
+    out.printCode(".globl " + function.getName());
+    out.printLabel(function.getName() + ":");
+    slotNum = function.getNumTempAddressVars() + function.getNumTempVars();
+    if(slotNum % 2 != 0){
+      slotNum++;
+    }
+    out.printCode("enter $(8 * " + slotNum + "), $0");
+  }
+
+  private void putInRegister(int i){
+    switch (i){
+      case 1:
+        out.printCode("movq %rdi, -8(%rbp)");
+        break;
+      case 2:
+        out.printCode("movq %rsi, -16(%rbp)");
+        break;
+      case 3:
+        out.printCode("movq %rdx, -24(%rbp)");
+        break;
+      case 4:
+        out.printCode("movq %rcx, -32(%rbp)");
+        break;
+      case 5:
+        out.printCode("movq %r8, -40(%rbp)");
+        break;
+      case 6:
+        out.printCode("movq %r9, -48(%rbp)");
+        break;
+    }
+  }
+
+  private void dfs(Function function){
     Stack<Instruction> s = new Stack<>();
     HashSet<Instruction> seen = new HashSet<>();
 
@@ -143,20 +153,18 @@ public final class CodeGen extends InstVisitor {
     }
   }
 
-
-
   public void visit(AddressAt i) {
     AddressVar destVar = i.getDst();
     Symbol base = i.getBase();
     LocalVar offset = i.getOffset();
 
     String varName = base.getName();
-    int destVarPosition = getLocalVarStackIndex(destVar);
+    int destVarPosition = getVarFromStack(destVar);
     if(offset == null){
       out.printCode("movq " + varName + "@GOTPCREL(%rip), " + "%r11");
       out.printCode("movq %r11, " + destVarPosition + "(%rbp)");
     }else{
-      int offsetVarPosition = getLocalVarStackIndex(offset);
+      int offsetVarPosition = getVarFromStack(offset);
       out.printCode("movq " + offsetVarPosition +"(%rbp), " + "%r10");
       out.printCode("imulq $8, %r10");
       out.printCode("movq " + varName + "@GOTPCREL(%rip), " + "%r11");
@@ -171,9 +179,9 @@ public final class CodeGen extends InstVisitor {
     LocalVar rhs = i.getRightOperand();
     BinaryOperator.Op binaryOp = i.getOperator();
 
-    int destVarPosition = getLocalVarStackIndex(destVar);
-    int lhsVarPosition = getLocalVarStackIndex(lhs);
-    int rhsVarPosition = getLocalVarStackIndex(rhs);
+    int destVarPosition = getVarFromStack(destVar);
+    int lhsVarPosition = getVarFromStack(lhs);
+    int rhsVarPosition = getVarFromStack(rhs);
 
     if(binaryOp == BinaryOperator.Op.Add){
 
@@ -208,9 +216,9 @@ public final class CodeGen extends InstVisitor {
     LocalVar rhs = i.getRightOperand();
     CompareInst.Predicate predicate = i.getPredicate();
 
-    int destVarPosition = getLocalVarStackIndex(destVar);
-    int lhsVarPosition = getLocalVarStackIndex(lhs);
-    int rhsVarPosition = getLocalVarStackIndex(rhs);
+    int destVarPosition = getVarFromStack(destVar);
+    int lhsVarPosition = getVarFromStack(lhs);
+    int rhsVarPosition = getVarFromStack(rhs);
 
     out.printCode("movq $0, %rax");
     out.printCode("movq $1, %r10");
@@ -238,7 +246,7 @@ public final class CodeGen extends InstVisitor {
   public void visit(CopyInst i) {
     Value src = i.getSrcValue();
     LocalVar dest = i.getDstVar();
-    int destVarPosition = getLocalVarStackIndex(dest);
+    int destVarPosition = getVarFromStack(dest);
     if(src instanceof IntegerConstant){
       long intVal = ((IntegerConstant) src).getValue();
       out.printCode("movq $" + intVal + ", %r10");
@@ -250,7 +258,7 @@ public final class CodeGen extends InstVisitor {
         out.printCode("movq $0, %r10");
       }
     }else if(src instanceof LocalVar){
-      int srcVarPosition = getLocalVarStackIndex((LocalVar) src);
+      int srcVarPosition = getVarFromStack((LocalVar) src);
       out.printCode("movq " + srcVarPosition + "(%rbp), %r10");
     }
     out.printCode("movq %r10, " + destVarPosition + "(%rbp)");
@@ -259,7 +267,7 @@ public final class CodeGen extends InstVisitor {
 
   public void visit(JumpInst i) {
     String jmp = labels.get(i.getNext(1));
-    int stackPosition = getLocalVarStackIndex(i.getPredicate());
+    int stackPosition = getVarFromStack(i.getPredicate());
     out.printCode("movq " + stackPosition + "(%rbp), %r11");
     out.printCode("cmp $1, %r11");
     out.printCode("je " + jmp);
@@ -269,8 +277,8 @@ public final class CodeGen extends InstVisitor {
     AddressVar src = i.getSrcAddress();
     LocalVar dest = i.getDst();
 
-    int srcPosition = getLocalVarStackIndex(src);
-    int dstPosition = getLocalVarStackIndex(dest);
+    int srcPosition = getVarFromStack(src);
+    int dstPosition = getVarFromStack(dest);
 
     out.printCode("movq " + srcPosition + "(%rbp), %r10");
     out.printCode("movq 0(%r10), %r11");
@@ -285,8 +293,8 @@ public final class CodeGen extends InstVisitor {
     LocalVar src = i.getSrcValue();
     AddressVar dest = i.getDestAddress();
 
-    int srcPosition = getLocalVarStackIndex(src);
-    int destPosition = getLocalVarStackIndex(dest);
+    int srcPosition = getVarFromStack(src);
+    int destPosition = getVarFromStack(dest);
 
     out.printCode("movq " + destPosition + "(%rbp), %r10");
     out.printCode("movq " + srcPosition + "(%rbp), %r11");
@@ -295,7 +303,7 @@ public final class CodeGen extends InstVisitor {
 
   public void visit(ReturnInst i) {
     LocalVar ret = i.getReturnValue();
-    int position = getLocalVarStackIndex(ret);
+    int position = getVarFromStack(ret);
     if(ret != null){
       out.printCode("movq " + position + "(%rbp), %rax");
     }
@@ -309,7 +317,7 @@ public final class CodeGen extends InstVisitor {
     putParamsInSpecificRegisters(params);
     if(params.size() > 6){
       for(int j = params.size() - 1; j > 5; j--){
-        int position = getLocalVarStackIndex(params.get(j));
+        int position = getVarFromStack(params.get(j));
 
         out.printCode("movq " + position + "(%rbp), %r10");
         out.printCode("movq %r10 ," + totalVarNum *(-8) + "(%rbp)");
@@ -321,7 +329,7 @@ public final class CodeGen extends InstVisitor {
     if(dest == null){
 
     }else{
-      int pos = getLocalVarStackIndex(dest);
+      int pos = getVarFromStack(dest);
       out.printCode("movq %rax, " + pos + "(%rbp)");
     }
   }
@@ -329,7 +337,7 @@ public final class CodeGen extends InstVisitor {
   private void putParamsInSpecificRegisters(List<LocalVar> params){
     for(int i = 0; i < params.size(); i++){
       if(i == 6) break;
-      int position = getLocalVarStackIndex(params.get(i));
+      int position = getVarFromStack(params.get(i));
       if(i == 0){
         out.printCode("movq " + position + "(%rbp), %rdi");
       }else if(i == 1){
