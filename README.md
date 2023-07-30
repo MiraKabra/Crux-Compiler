@@ -1,1 +1,9 @@
-I, Mira Kabra, hereby certify that the files I submitted represents my own work, that I did not copy any code from any other person or source, and that I did not share my code with any other student.
+### A compiler for a simple language - Crux
+
+#### Components:
+
+- Grammar formation and Parsing
+- Symbol Table and Abstract Syntax Tree (AST)
+- Types and Type Checking
+- Intermediate Representation
+- Binary Code generation
